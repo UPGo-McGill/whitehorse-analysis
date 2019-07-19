@@ -1,0 +1,551 @@
+---
+title: "Short-term rentals in Whitehorse"
+author: "David Wachsmuth, School of Urban Planning, McGill University"
+date: "July 16, 2019"
+output:
+  pdf_document:
+    fig_caption: yes
+    fig_width: 6
+    fig_height: 4
+  html_document: default
+---
+
+### Introduction
+
+In the last several years, short-term rental (STR) platforms such as Airbnb have begun to transform residential neighbourhoods across Canada. Most of the research and policy attention has been focused on the country's largest cities, and until recently there were no reliable estimates of either the scope of STRs or their impact on housing markets outside of Toronto, Montréal and Vancouver. With the release of our report "Short-term rentals in Canada: Uneven growth, uneven impacts" (Combs et al. 2019), these estimates are for the first time available for the entire country.
+
+In this brief report, we shine a data spotlight on the City of Whitehorse. The most populous city in the three territories, it also receives proportionally large tourism flows, and there has been increasing concern in the city that the growth in short-term rentals has come at the expense of long-term housing availability (Wood 2018). Policymakers are now considering adopting regulations on STRs in Whitehorse (Rudyk 2019), and it is in the public interest for any such regulations to be supported by strong empirical data. This report provides such data, discussing:
+
+- Active daily listings
+- The spatial distribution of listings
+- Which STR platforms are used in Whitehorse
+- The prevalence of different listing types
+- A breakdown of listings by number of bedrooms
+- Revenue distribution and commercial operators
+- Housing loss caused by conversions to STRs
+- Listings likely not operated by the principal resident
+
+The analysis is based on a comprehensive dataset of all Airbnb and HomeAway properties in Whitehorse each day from October 1, 2014 to April 30, 2019, along with comparisons where relevant with other jurisdictions. In total we analyze 519,000 data points. The data was provided by AirDNA, a firm that specializes in scraping STR data, and one of two standard sources for scholarly empirical analysis of STRs. Complete methodology details, along with all the code necessary to reproduce this analysis, are freely available under an MIT license on the UPGo GitHub page at [https://github.com/UPGo-McGill/whitehorse-analysis](https://github.com/UPGo-McGill/whitehorse-analysis).
+
+
+### Active daily listings
+
+```{r active_daily_setup, include = FALSE, cache = FALSE, cache.lazy = FALSE}
+
+library(tidyverse)
+library(sf)
+
+load("data/WH_property.Rdata")
+load("data/WH_LTM_property.Rdata")
+
+```
+"Active daily listings" are those which were displayed on either the Airbnb.ca or HomeAway.ca website on a given day, regardless of their availability status (reserved, available, or blocked). It is the clearest and least ambiguous means of determining the overall size of the short-term rental market in a location, particularly with respect to change over time. On April 30, 2019, there were `r property %>% filter(Created <= "2019-04-30", Scraped >= "2019-04-30") %>% nrow()` active listings in Whitehorse. However, `r property %>% filter(Created <= "2019-04-30", Scraped >= "2019-04-30", Housing == FALSE) %>% nrow()` of these were hotels or other traditional accomodation providers using the Airbnb platform for bookings. In all the analysis that follows, we exclude these listings, and focus on the `r nrow(LTM_property)` listings which were located in conventional housing units. These `r nrow(LTM_property)` listings were operated by `r LTM_property %>% group_by(Host_ID) %>% summarize(count = n()) %>% nrow()` hosts. 
+
+STR listings located in housing units in Whitehorse earned $`r prettyNum(round(sum(property[property$Housing == TRUE,]$Revenue, na.rm = TRUE)/1e6, 1))` million last year (May 2018 - April 2019). The number of active listings in Whitehorse grew by `r scales::percent((property %>% filter(Created <= "2019-04-30", Scraped >= "2019-04-30", Housing == TRUE) %>% nrow()) / (property %>% filter(Created <= "2018-04-30", Scraped >= "2018-04-30", Housing == TRUE) %>% nrow()) - 1)` over the last year year. Figure \ref{fig:active_graph} shows the growth rate of active daily listings in Whitehorse (This figure includes listings which were not visible on the website but still had activity on a given day, so the numbers are slightly higher than those discussed in the previous paragraph.)  
+
+
+```{r active_graph, include = TRUE, message = FALSE, cache = TRUE, echo = FALSE, fig.cap = "Active daily STR listings in the City of Whitehorse", fig.align = "center"}
+
+load("data/WH_daily.Rdata")
+
+daily %>% 
+  filter(Housing == TRUE) %>% 
+  group_by(Date) %>% 
+  summarize(Listings = n()) %>% 
+  ggplot() +
+  geom_line(aes(Date, Listings), colour = "black", size = 1) +
+  theme_minimal() +
+  scale_y_continuous(name = NULL, label = scales::comma) +
+  scale_x_date(name = NULL)
+```
+
+
+Whitehorse has the second most active STR listings across the three territories, second only to Yellowknife. (And in fact the Whitehorse region takes first place if the outlying Macpherson-Grizzly Valley area is included.) The following table compares basic listing statistics for the five Northern cities with the most active STR listings:
+
+```{r territories_table, include = TRUE, message = FALSE, cache = TRUE, echo = FALSE}
+
+load("data/WH_territories_property.Rdata")
+
+territories_property %>% 
+  filter(Housing == TRUE) %>% 
+  st_drop_geometry() %>% 
+  group_by(name) %>% 
+  summarize(`Active listings` = 
+              length(Property_ID[Created <= "2019-04-30" & 
+                                   Scraped >= "2019-04-30" & Housing == TRUE]),
+            `Listings per 1000 residents` = round(1000 * `Active listings` /
+              mean(Population), 1),
+            `Annual rev.` = sum(Revenue, na.rm = TRUE),
+            `Rev. per listing` = `Annual rev.` / `Active listings`) %>% 
+  arrange(desc(`Active listings`)) %>% 
+  slice(1:5) %>% 
+  mutate(City = c("Yellowknife", "Whitehorse", "Iqaluit", 
+                  "Macpherson-Grizzly Valley", "Dawson"),
+         `Annual rev.` = round(`Annual rev.`),
+         `Annual rev.` = paste0("$", str_sub(`Annual rev.`, 1, -7), ".",
+                                str_sub(`Annual rev.`, -6, -6), " million"),
+         `Rev. per listing` = paste0("$", 
+                                     str_sub(round(`Rev. per listing`), 1, -4),
+                                     ",",
+                                     str_sub(round(`Rev. per listing`, -2), -3, 
+                                             -1))) %>% 
+  select(City, everything(), -name) %>% 
+  knitr::kable("latex", format.args = list(big.mark = ","))
+
+```
+
+The growth in active listings across these five cities along with the remainder of the territories is summarized in Figure \ref{fig:territories_graph}. It demonstrates Whitehorse and Yellowknife growing at roughly the same rate and slightly outpacing the rest of the North. On April 30, 2019, Whitehorse and Yellowknife collectively accounted for `r round(100 * nrow(filter(territories_property, name %in% c("Whitehorse (CY)","Yellowknife (CY)"), Created <= "2019-04-30", Scraped >= "2019-04-30", Housing == TRUE)) / nrow(filter(territories_property, Created <= "2019-04-30", Scraped >= "2019-04-30", Housing == TRUE)), 1)`% of all active listings across the territories, while a year earlier they accounted for `r round(100 * nrow(filter(territories_property, name %in% c("Whitehorse (CY)","Yellowknife (CY)"), Created <= "2018-04-30", Scraped >= "2018-04-30", Housing == TRUE)) / nrow(filter(territories_property, Created <= "2018-04-30", Scraped >= "2018-04-30", Housing == TRUE)), 1)`%.
+
+```{r territories_graph, include = TRUE, message = FALSE, cache = TRUE, echo = FALSE, fig.cap = "Active daily STR listings in the three Canadian territories", fig.align = "center"}
+
+load("data/WH_territories_property.Rdata")
+load("data/WH_territories_daily.Rdata")
+
+territories_property %>% 
+  st_drop_geometry() %>% 
+  select(Property_ID, name) %>% 
+  left_join(territories_daily, .) %>% 
+  filter(Housing == TRUE) %>%
+  group_by(Date, name) %>% 
+  summarize(Listings = n()) %>% 
+  summarize(Yellowknife = sum(Listings[name == "Yellowknife (CY)"]),
+            Whitehorse =  sum(Listings[name == "Whitehorse (CY)" ]),
+            Iqaluit =     sum(Listings[name == "Iqaluit (CY)"    ]),
+            Macpherson  = sum(Listings[name == "Macpherson-Grizzly Valley (NO)"]),
+            Dawson = sum(Listings[name == "Dawson (T)"]),
+            Other = sum(Listings) - (Yellowknife + Whitehorse + Iqaluit + 
+                                       Macpherson + Dawson)) %>% 
+  gather(Yellowknife, Whitehorse, Iqaluit, Macpherson, Dawson, Other, 
+         key = "City", value = "Listings") %>% 
+  filter(Date >= "2016-09-01") %>% 
+  ggplot() +
+  geom_line(aes(Date, Listings, colour = City), size = 1) +
+  theme_minimal() +
+  scale_y_continuous(name = NULL, label = scales::comma) +
+  scale_x_date(name = NULL) +
+  theme(legend.position = "bottom")
+
+```
+
+
+### Spatial distribution of listings
+
+Figure \ref{fig:map} shows the location of active STR listings in the City of Whitehorse, sized by annual revenue, on April 30 of the last three years. It demonstrates the growth of both number of listings and revenue in that time period, and shows that listings are heavily concentrated in the downtown area, with secondary concentrations in Porter Creek, Riverdale, and along Hamilton Blvd.   
+  
+```{r map, include = TRUE, cache = TRUE, message = FALSE, echo = FALSE, fig.cap = "Spatial distribution of active STR listings in Whitehorse", fig.align = "center"}
+
+library(tidyverse)
+library(sf)
+library(ggspatial)
+
+load("data/WH.Rdata")
+load("data/WH_streets.Rdata")
+load("data/WH_LTM_property.Rdata")
+load("data/WH_property.Rdata")
+
+property_2016 <- 
+  property %>% 
+  filter(Housing == TRUE, Created <= "2016-04-30", Scraped >= "2016-04-30")
+
+property_2016 <- 
+  daily %>% 
+  filter(Status == "R", Date >= "2015-05-01", Date <= "2016-04-30") %>% 
+  group_by(Property_ID) %>% 
+  summarize(Revenue = sum(Price)) %>% 
+  left_join(property_2016, .) %>% 
+  mutate(Year = "2016") %>% 
+  filter(Revenue > 0)
+
+property_2017 <- 
+  property %>% 
+  filter(Housing == TRUE, Created <= "2017-04-30", Scraped >= "2017-04-30")
+
+property_2017 <- 
+  daily %>% 
+  filter(Status == "R", Date >= "2016-05-01", Date <= "2017-04-30") %>% 
+  group_by(Property_ID) %>% 
+  summarize(Revenue = sum(Price)) %>% 
+  left_join(property_2017, .) %>% 
+  mutate(Year = "2017") %>% 
+  filter(Revenue > 0)
+
+property_2018 <- 
+  property %>% 
+  filter(Housing == TRUE, Created <= "2018-04-30", Scraped >= "2018-04-30")
+
+property_2018 <- 
+  daily %>% 
+  filter(Status == "R", Date >= "2017-05-01", Date <= "2018-04-30") %>% 
+  group_by(Property_ID) %>% 
+  summarize(Revenue = sum(Price)) %>% 
+  left_join(property_2018, .) %>% 
+  mutate(Year = "2018") %>% 
+  filter(Revenue > 0)
+
+LTM_property %>% 
+  filter(Revenue > 0) %>%
+  mutate(Year = "2019") %>% 
+  rbind(property_2017, property_2018) %>%
+  ggplot() +
+  geom_sf(data = WH_streets, colour = alpha("grey", 0.5)) +
+  geom_sf(aes(size = Revenue, colour = Listing_Type), alpha = 0.4) +
+  facet_wrap(vars(Year)) +
+  scale_colour_manual(name = "Listing type",
+                      values = c("#7570B3", "#D95F02")) +
+  scale_size_continuous(guide = FALSE) +
+  guides(colour = guide_legend(
+    override.aes = list(fill = c("#7570B3", "#D95F02"),
+                        alpha = 1))) +
+  theme(legend.position = "bottom",
+        axis.ticks = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        rect = element_blank(),
+        legend.title = element_text(size = 10)) 
+
+```
+
+
+### Which STR platforms are used in Whitehorse?
+
+Of the 186 STR listings active in Whitehorse on April 30, 2019, 172 of them were listed exclusively on Airbnb, 9 were listed exclusively on HomeAway, and 5 were listed on both Airbnb and HomeAway. This fact implies that attempts to estimate the extent of the STR market in Whitehorse using Airbnb data alone will be highly accurate.
+
+
+### Listing type prevalence
+
+STR listings can be one of three types: entire homes, private rooms, or shared rooms. Most policy attention has focused on entire-home listings, under the theory that these listings are most likely to generate harmful negative externalities, including housing loss and neighbourhood nuisance. The following table provides the breakdown of listing types in Whitehorse on April 30, 2019:
+
+```{r listing_type, include = TRUE, cache = TRUE, echo = FALSE, results = "asis"}
+
+library(tidyverse)
+library(sf)
+
+load("data/WH_property.Rdata")
+
+property %>% 
+  filter(Housing == TRUE) %>% 
+  rename(`Listing type` = Listing_Type) %>% 
+  st_drop_geometry() %>% 
+  filter(Created <= "2019-04-30", Scraped >= "2019-04-30") %>% 
+  group_by(`Listing type`) %>% 
+  summarize(`Active listings` = n(),
+            `Annual rev.` = sum(Revenue, na.rm = TRUE),
+            `Rev. per listing` = `Annual rev.` / n()) %>% 
+  mutate(
+    `% of all listings` = scales::percent(`Active listings` /
+                                  sum(`Active listings`)),
+    `% of annual rev.` = `Annual rev.` / sum(`Annual rev.`)) %>% 
+  mutate(
+    `Annual rev.` = round(`Annual rev.`),
+    `Annual rev.` = paste0("$", str_sub(`Annual rev.`, 1, -7), ".",
+                              str_sub(`Annual rev.`, -6, -6), " million"),
+    `% of annual rev.` = round(`% of annual rev.`, 3),
+    `% of annual rev.` = paste0(100 * `% of annual rev.`, "%"),
+    `Rev. per listing` = round(`Rev. per listing`),
+    `Rev. per listing` = paste0("$", str_sub(`Rev. per listing`, 1, -4),
+                                   ",", str_sub(`Rev. per listing`, -3, -1))
+  ) %>% 
+  select(`Listing type`, `Active listings`, `Annual rev.`,
+         `% of all listings`, `% of annual rev.`, `Rev. per listing`) %>% 
+  knitr::kable("latex", format.args = list(big.mark = ","))
+```
+
+The table demonstrates that entire-home listings dominate both the number of active listings and the amount of revenue earned by STRs; they are twice as common as private-room listings, and earn nearly double the per-listing revenue.
+
+### Bedroom breakdown
+
+Since almost every STR in Whitehorse is being operated out of a housing unit which could otherwise be housing a long-term resident, the size of these units is an important factor in determining the impact of STRs on housing supply in the city. If most housing units being listed as STRs are studios and one-bedroom apartments, the opportunity cost of not housing long-term residents in those units will be somewhat lower than if most of the units are family-sized. Figure \ref{fig:bed} shows the breakdown of bedroom types among active entire-home listings. (Private-room and shared-room listings are overwhelmingly listed as having one bedroom, but the actual size of the dwelling unit cannot be inferred from that fact.) As the figure indicates, while the most common unit size is one-bedroom (36.2%), the majority of entire-home STR listings in Whitehorse are two-bedroom units or larger, with two-bedroom (27.5%) and three-bedroom (20.5%) units particularly common. 30.5% of entire-home listings are hosted in housing units with three or more bedrooms, which is commonly considered family-appropriate housing.
+
+
+```{r bed, include = TRUE, cache = TRUE, echo = FALSE, fig.cap = "Bedroom sizes among Whitehorse entire-home STRs", fig.align = "center"}
+
+library(tidyverse)
+
+load("data/WH_property.Rdata")
+
+var <- filter(LTM_property, Listing_Type == "Entire home/apt")$Bedrooms
+nrows <- 20
+df <- expand.grid(y = 1:nrows, x = 1:nrows)
+categ_table <- round(table(var) * ((nrows*nrows)/(length(var))))
+categ_table[1:4] <- categ_table[1:4] + 1
+names(categ_table) <- c("0 (studio)", "1", "2", "3", "4", "5")
+df$category <- factor(rep(names(categ_table), categ_table))  
+
+ggplot(df, aes(x = x, y = y, fill = category)) + 
+  geom_tile(color = "white", size = 0.5) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0), trans = 'reverse') +
+  scale_fill_brewer(palette = "Set3") +
+  theme(plot.title = element_text(size = rel(1.2)),
+        panel.border = element_rect(size = 1, fill = NA),
+        axis.text = element_blank(),
+        axis.title = element_blank(),
+        axis.ticks = element_blank(),
+        legend.title = element_blank(),
+        legend.position = "right")
+
+```
+  
+  
+### Revenue distribution and commercial operators
+
+A crucial distinction for understanding the structure of a STR market is the distinction between casual STRs ("home sharing") and dedicated STRs ("commercial operations"). There are multiple ways to capture this distinction, but arguably the most straightforward is to examine the distribution of revenue among STR hosts. Figure \ref{fig:host_percentiles} shows the percentage of the total $`r prettyNum(round(sum(property$Revenue, na.rm = TRUE)/1e6, 1))` million in STR revenue last year which accrued to the top ten percent, five percent and one percent of Whitehorse hosts. More than a quarter of all revenue was earned by just one in twenty hosts, and the most successful ten percent of hosts earned 40.9% of all STR revenue.
+
+
+```{r host_percentiles, include = TRUE, cache = TRUE, echo = FALSE, fig.cap = "STR host revenue distribution in Whitehorse", fig.align = "center", message = FALSE}
+
+library(tidyverse)
+library(sf)
+
+load("data/WH_daily.Rdata")
+
+daily %>%
+  filter(Housing == TRUE, Date >= "2018-05-01", Status == "R") %>%
+  group_by(Host_ID) %>%
+  summarize(rev = sum(Price)) %>%
+  filter(rev > 0) %>%
+  summarize(
+    `Top 1%`  = sum(rev[rev > quantile(rev, c(0.99))] / sum(rev)),
+    `Top 5%`  = sum(rev[rev > quantile(rev, c(0.95))] / sum(rev)),
+    `Top 10%` = sum(rev[rev > quantile(rev, c(0.90))] / sum(rev))) %>% 
+  gather(`Top 1%`, `Top 5%`, `Top 10%`, key = "percentile", value = "value") %>% 
+  mutate(percentile = factor(percentile, 
+                             levels = c('Top 1%', 'Top 5%', 'Top 10%'))) %>% 
+  ggplot() +
+  geom_bar(aes(percentile, value, fill = percentile), stat = "identity") +
+  theme_minimal() +
+  scale_y_continuous(labels = percent) +
+  scale_fill_manual("Percentile", 
+                    values = alpha(c("lightblue", "blue", "darkblue"), 0.6)) +
+  theme(axis.title.y = element_blank()) +
+  theme(axis.title.x = element_blank())
+```
+  
+  
+What this analysis suggests is that STR regulations which targeted dedicated commercial operations would likely only affect a small number of STR hosts in absolute terms, since most hosts earn revenue which is consistent with them being casual, part-time home sharers operating out of their principal residence. As the following table shows, the median host revenue in Whitehorse last year was $6,800, while the top earning host earned nearly $100,000 in Whitehorse. (In fact, the top earning hosts had listings in other cities in Canada, so their total earnings were many times that.)
+
+
+```{r quantiles, include = TRUE, cache = TRUE, echo = FALSE, results = "asis"}
+
+library(tidyverse)
+library(sf)
+
+load("data/WH_LTM_property.Rdata")
+
+property %>% 
+  filter(Revenue > 0, Housing == TRUE) %>% 
+  pull(Revenue) %>% 
+  quantile() %>% 
+  as.list() %>% 
+  as_tibble() %>% 
+  select(-`0%`) %>% 
+  set_names(c("25th percentile", "Median", "75th percentile", 
+              "100th percentile")) %>% 
+  mutate_all(round, -2) %>% 
+  mutate_all(~paste0("$", str_sub(., 1, -4), ",", str_sub(., -3, -3), "00")) %>% 
+  knitr::kable("latex")
+```
+
+
+Another way to identify commercial operators is to look for hosts who operate multiple listings. To take the simplest case, by definition a host with two or more entire-home listings cannot be operating both listings out of their principal residence. We define as a "multilisting" any listing operated by hosts who is simultaneously operating other listings. If a host has two or more entire-home listings active on the same day, those are multilistings. We likewise identify private-room multilistings in cases where a host has three or more private-room listings operating on the same day. Since 90.0% of entire-home listings have three or fewer bedrooms, there will be few cases where a host operating three private-room STR listings in a dwelling unit has not converted that unit into a dedicated STR operation.
+
+The results of Figure \ref{fig:ML} demonstrate that a large and increasing share of both active listings and host revenue in Whitehorse belong to multilistings. Since the start of 2019 multlistings have been close to 35% of active listings and have earned more than 40% of total host revenue. Moreover, these figures should be taken as absolute minimums, since many commercial operators split their operations across several Airbnb or HomeAway accounts, and their listings would therefore be erroneously counted as non-commercial. Moreover, many—perhaps most—STR commercial operators only operate a single listing, but operate it on a full-time basis. A house owner with a secondary suite, or the owner of an investment condo who operates an STR in it, are clearly commercial operators running listings which are not their principal residences, but they would not be counted by this method of identifying multilistings.    
+    
+``` {r ML, include = TRUE, cache = TRUE, message = FALSE, warning = FALSE, echo = FALSE, fig.cap = "The percentage of total listings and revenue accounted for by multilistings", fig.align = "center"}
+
+library(tidyverse)
+
+load("data/WH_daily.Rdata")
+
+daily %>% 
+  group_by(Date) %>% 
+  summarize(Listings = mean(ML),
+            Revenue = sum(Price * (Status == "R") * ML, na.rm = TRUE) / 
+              sum(Price * (Status == "R"), na.rm = TRUE)) %>% 
+  gather(Listings, Revenue, key = `Multilisting percentage`, value = Value) %>% 
+  ggplot() +
+  geom_line(aes(Date, Value, colour = `Multilisting percentage`), alpha = 0.2) +
+  geom_smooth(aes(Date, Value, colour = `Multilisting percentage`), se = FALSE,
+              method = "loess", span = 0.2) +
+  theme_minimal() +
+  scale_y_continuous(name = NULL, label = scales::percent, limits = c(0, 0.5)) +
+  scale_x_date(name = NULL, limits = c(as.Date("2016-05-01"), NA)) +
+  theme(legend.position = "bottom")
+```
+
+Of the 27 multilisting hosts in Whitehorse, five only operate a single STR listing in Whitehorse, although they collectively operate 10 outside of Whitehorse. The other 22 each operate between two and six STR listings in Whitehorse out of conventional housing units (and collectively operate 12 more units outside of Whitehorse).
+
+
+### Housing loss
+
+One of the most important considerations when gauging the impacts of STRs on a city is the extent to which STRs are removing long-term housing from the market, either directly where tenants have been evicted or not replaced at the end of a leasure, or indirectly by absorping new construction which otherwise would have gone onto the long-term market. To obtain a precise number of such cases of housing loss, STR hosts would need to be individually surveyed, which is infeasible because hosts are anonymous on the Airbnb and HomeAway platforms.
+
+One reasonable proxy for STR listings which represent long-term housing loss is multilistings, discussed in the previous section, since these are highly likely to be commercial operations, and by definition cannot be operated out of a host's principal residence.
+
+```{r FREH_GH_setup, include = FALSE, cache = FALSE, cache.lazy = FALSE}
+
+library(tidyverse)
+library(sf)
+
+load("data/WH_FREH.Rdata")
+load("data/WH_GH.Rdata")
+
+```
+
+Another method, arguably simpler, is to identify listings which are highly available throughout the year and which receive many bookings. Along these lines, we define *frequently rented entire-home listings*, or FREH listings, as entire-home listings which were available on Airbnb or HomeAway a majority of the year (at least 183 nights) and were booked a minimum of 90 nights. Except in the rare cases of residents who travel most of the year, it will be very difficult for someone to rent their home as an STR a majority of the year and still actually live there. As of April 30, 2019 there were `r nrow(filter(FREH, Date == "2019-04-30"))` FREH listings in Whitehorse These listings are what Fairbnb has called "ghost hotels"—entire homes converted to dedicated STR operations. Each of these dwelling units could be housing Whitehorse residents, but instead are serving as de facto hotels.
+
+These `r nrow(filter(FREH, Date == "2019-04-30"))` FREH listings are a good starting point for estimating housing loss caused by conversions to STR. However, it is also possible that private-room listings are contributing to housing loss. To begin with, a full-time private-room STR might have otherwise been offered to a roommate on a long-term lease. But it is also possible that entire housing units have been subdivided into multiple private-room listings. We call these "ghost hostels", in analogy to the ghost hotels discussed above. We detect ghost hostels by finding clusters of three or more private-room listings operated by a single host, whose reported locations are close enough to each other that they could have originated in the same actual housing unit. (Airbnb and HomeAway obfuscate listing locations by shifting them randomly up to 200 m.) In addition to the `r nrow(filter(FREH, Date == "2019-04-30"))` FREH listings, we identified a further `r nrow(filter(GH, date == "2019-04-30"))` housing units which had been converted into ghost hostels.
+
+In total, therefore, on April 30, 2019 we believe there were `r nrow(filter(FREH, Date == "2019-04-30")) + sum(filter(GH, date == "2019-04-30")$housing_units)` housing units in the City of Whitehorse which were being used as dedicated short-term rentals and therefore are not being offered on the long-term rental market. The equivalent figure one year ago (April 30, 2018) was `r nrow(filter(FREH, Date == "2018-04-30")) + sum(filter(GH, date == "2018-04-30")$housing_units)`, which means that there has been a `r round(100 * (nrow(filter(FREH, Date == "2019-04-30")) + sum(filter(GH, date == "2019-04-30")$housing_units)) / (nrow(filter(FREH, Date == "2018-04-30")) + sum(filter(GH, date == "2018-04-30")$housing_units)), 1) - 100`% increase in STR-induced housing loss in the City of Whitehorse in the last twelve months—a higher growth rate than the growth in total active listings (`r scales::percent((property %>% filter(Created <= "2019-04-30", Scraped >= "2019-04-30", Housing == TRUE) %>% nrow()) / (property %>% filter(Created <= "2018-04-30", Scraped >= "2018-04-30", Housing == TRUE) %>% nrow()) - 1)`). Figure 7 shows the growth rate in STR-caused housing loss in Whitehorse since 2015, and demonstrates the steep growth curve of this housing loss, suggesting it will continue growing unless regulatory measures are taken to slow it.
+  
+  
+``` {r housing, include = TRUE, cache = TRUE, echo = FALSE, message = FALSE, warning = FALSE, fig.cap = "Housing units converted to dedicated STRs in the City of Whitehorse"}
+
+library(tidyverse)
+library(sf)
+
+load("data/WH_GH.Rdata")
+load("data/WH_FREH.Rdata")
+
+housing_loss <- 
+  tibble(Date = as.Date(as.Date(
+    "2015-09-30", origin = "1970-01-01"):as.Date(
+      "2019-04-30", origin = "1970-01-01"), origin = "1970-01-01"))
+
+housing_loss <- 
+  FREH %>% 
+  group_by(Date) %>% 
+  summarize(`Entire home/apt` = n()) %>% 
+  left_join(housing_loss, .)
+
+housing_loss <- 
+  GH %>% 
+  st_drop_geometry() %>% 
+  group_by(date) %>% 
+  summarize(`Private room` = sum(housing_units)) %>% 
+  rename(Date = date) %>% 
+  left_join(housing_loss, .)
+
+housing_loss <- 
+  housing_loss %>% 
+  gather(`Entire home/apt`, `Private room`, key = `Listing type`,
+         value = `Housing units`)
+
+ggplot(housing_loss) +
+  geom_col(aes(Date, `Housing units`, fill = `Listing type`),
+           lwd = 0) +
+  theme_minimal() +
+  scale_y_continuous(name = NULL, label = comma) +
+  scale_x_date(name = NULL, limits = c(as.Date("2015-09-30"), NA)) +
+  theme(legend.position = "bottom")
+```
+
+One way to contextualize the magnitude of STR-caused housing loss in Whitehorse is to compare the number of housing units converted to STRs with the number of vacant rental units available for rent. Whitehorse currently has an uncomfortably low rental vacancy rate of 2.8% (CMHC 2018). Given the total purpose-built rental housing stock of 1,026, this means that, at any given moment, there are approximately 30 apartments available for rent. There are nearly one and a half times this many housing units which have been converted to dedicated STRs in the city. In other words, if these units were all returned to the long-term housing market, the effect would be to more than double the rental vacancy rate in the short term. These newly available units would of course be absorbed by new tenants, and the vacancy rate would decline again. But it would settle at a new equilibrium higher than the previous one, and residential rents would likewise be lower than they would have been if the STR units continued to act as hotels rather than housing.
+
+Another way to contextualize STR-caused housing loss in Whitehorse is to observe that, in the last year, 328 new occupancy permits were issued in the city. Meanwhile, during that same time period there were approximately `r nrow(filter(FREH, Date == "2019-04-30")) + sum(filter(GH, date == "2019-04-30")$housing_units)` housing units operating as dedicated STRs. Returning these units to the market would be equivalent to nearly two months' worth of new housing supply in the city.
+
+
+### Listings likely in violation of principal residence requirement
+
+```{r principal_res, include = FALSE, cache = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
+
+### Listings likely in violation of principal residence requirement ############
+
+## LFRML calculations
+
+# Add ML field to property file
+property <- 
+  daily %>% 
+  filter(Date == "2019-04-30") %>% 
+  select(Property_ID, ML) %>% 
+  left_join(property, .) %>% 
+  mutate(ML = if_else(is.na(ML), FALSE, ML))
+
+# Add n_reserved and n_available fields
+property <- 
+  daily %>% 
+  filter(Status == "R") %>% 
+  group_by(Property_ID) %>% 
+  summarize(n_reserved = n()) %>% 
+  left_join(property, .)
+
+property <- 
+  daily %>% 
+  filter(Status == "R" | Status == "A") %>% 
+  group_by(Property_ID) %>% 
+  summarize(n_available = n()) %>% 
+  left_join(property, .)
+
+# Add LFRML field
+property <- 
+  property %>%
+  group_by(Host_ID, Listing_Type) %>% 
+  mutate(LFRML = case_when(
+    Listing_Type != "Entire home/apt" ~ FALSE,
+    ML == FALSE                       ~ FALSE,
+    n_available == min(n_available)   ~ TRUE,
+    TRUE                              ~ FALSE)) %>% 
+  ungroup()
+
+# Resolve ties
+property <- 
+  property %>% 
+  group_by(Host_ID, Listing_Type) %>% 
+  mutate(prob = sample(0:10000, n(), replace = TRUE),
+         LFRML = if_else(
+           sum(LFRML) > 1 & prob != max(prob), FALSE, LFRML)) %>% 
+  select(-prob)
+
+
+# Add GH status
+GH_list <-
+  GH %>% 
+  filter(date == "2019-04-30") %>% 
+  pull(property_IDs) %>%
+  unlist() %>%
+  unique()
+
+property <-
+  property %>% 
+  mutate(GH = if_else(Property_ID %in% GH_list, TRUE, FALSE))
+
+# Add FREH status
+property <- 
+  FREH %>% 
+  filter(Date == "2019-04-30") %>% 
+  mutate(FREH = TRUE) %>% 
+  left_join(property, .) %>% 
+  mutate(FREH = if_else(is.na(FREH), FALSE, FREH))
+
+# Add pr_res field
+pr_res_table <- 
+  property %>%
+  filter(Housing == TRUE, Created <= "2019-04-30", Scraped >= "2019-04-30") %>% 
+  mutate(pr_res = case_when(
+    GH == TRUE                     ~ FALSE,
+    Listing_Type == "Shared room"  ~ TRUE,
+    Listing_Type == "Private room" ~ TRUE,
+    FREH == TRUE                   ~ FALSE,
+    LFRML == TRUE                  ~ TRUE,
+    ML == TRUE                     ~ FALSE,
+    TRUE                           ~ TRUE))
+
+```
+The final topic to address concerns the question of how many STR listings are being operated by the principal resident of a dwelling unit—the person for whom the unit is their main place of residence throughout the year. STR listings being operated by a unit's principal resident most directly capture the idea of "home sharing" as opposed to commercial STR operations, and an increasing number of jurisdictions across Canada (including the Province of Québec and the Cities of Toronto and Vancouver) are using principal residence requirements as a basis for regulating STRs.
+
+We begin with the `r property %>% st_drop_geometry() %>% filter(Housing == TRUE, Created <= "2019-04-30", Scraped >=  "2019-04-30") %>% nrow()` STR listings active in Whitehorse housing units on April 30, 2019. Entire-home multi-listings will, with one important exception to be discussed momentarily, by definition not be their host's principal residence, since a person cannot claim multiple homes as their principal residence. There were `r property %>% st_drop_geometry() %>% filter(Housing == TRUE, Created <= "2019-04-30", Scraped >= "2019-04-30", Listing_Type == "Entire home/apt", ML == TRUE) %>% nrow()` entire-home multi-listings. However, it is possible that a host rents out their own principal residence occasionally while also operating additional entire-home listings. So we conservatively assume that the *least frequently rented* entire-home multilisting is in fact the host's principal residence. There are `r property %>% st_drop_geometry() %>% filter(Housing == TRUE, Created <= "2019-04-30", Scraped >= "2019-04-30", Listing_Type == "Entire home/apt", LFRML == TRUE) %>% nrow()` such listings, which leaves `r property %>% st_drop_geometry() %>% filter(Housing == TRUE, Created <= "2019-04-30", Scraped >= "2019-04-30") %>% filter(Listing_Type == "Entire home/apt") %>% filter((ML == TRUE & LFRML == FALSE)) %>% nrow()` which are likely not their host's principal residence.
+
+To this number we add the FREH listings which were not already included in the list of multilistings. There are `r (property %>% st_drop_geometry() %>% filter(Housing == TRUE, Created <= "2019-04-30", Scraped >= "2019-04-30") %>% filter(Listing_Type == "Entire home/apt") %>% filter((ML == TRUE & LFRML == FALSE) | (FREH == TRUE)) %>% nrow()) - (property %>% st_drop_geometry() %>% filter(Housing == TRUE, Created <= "2019-04-30", Scraped >= "2019-04-30") %>% filter(Listing_Type == "Entire home/apt") %>% filter((ML == TRUE & LFRML == FALSE)) %>% nrow())` such listings, which brings the total listings likely not a principal residence to `r (property %>% st_drop_geometry() %>% filter(Housing == TRUE, Created <= "2019-04-30", Scraped >= "2019-04-30") %>% filter(Listing_Type == "Entire home/apt") %>% filter((ML == TRUE & LFRML == FALSE) | (FREH == TRUE)) %>% nrow())`. Finally, we add private-room listings located in ghost hostels. There are `r property %>% st_drop_geometry() %>% filter(Housing == TRUE, Created <= "2019-04-30", Scraped >= "2019-04-30") %>% filter(GH == TRUE) %>% nrow()` of these listings. This means, in total, that of the `r nrow(LTM_property)` STR listings active in the City of Whitehorse `r nrow(filter(pr_res_table, pr_res == FALSE))` are likely not being operated out of a principal residence. This is `r scales::percent(nrow(filter(pr_res_table, pr_res == FALSE)) / nrow(LTM_property))` of active listings.
+
+To be clear, there is a relatively high level of uncertainty in this estimate, since assumptions had to be made at each step of the analysis. However, given that jurisdictions which have imposed principal residence requirements have seen drops in active listings in the realm of 30-50%, a `r scales::percent(nrow(filter(pr_res_table, pr_res == FALSE)) / nrow(LTM_property))` estimate seems plausible.
+
+
+### References
+
+CMHC. 2018. Northern housing report. Available online at http://publications.gc.ca/collections/collection_2018/schl-cmhc/NH12-263-2018-eng.pdf.
+
+Combs, Jennifer, Danielle Kerrigan, and David Wachsmuth. 2019. Short-term rentals in Canada: Uneven growth, uneven impacts. Forthcoming in *Canadian Journal of Urban Research*. Available online at https://upgo.lab.mcgill.ca/publication/short-term-rentals-in-canada/.
+
+Rudyk, Mike. 2019. Whitehorse developing local Airbnb regulations. *CBC News*, May 2. Available online at https://www.cbc.ca/news/canada/north/airbnb-whitehorse-short-term-rentals-city-of-whitehorse-1.5120242.
+
+Wood, Stephanie. 2018. With Airbnb rentals flourishing in Whitehorse, city considers regulation. *CBC News*, July 26. Available online at https://www.cbc.ca/news/canada/north/yukon-tops-airbnb-ratings-canada-1.4761171.
