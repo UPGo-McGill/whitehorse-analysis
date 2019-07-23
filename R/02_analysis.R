@@ -1,4 +1,42 @@
-## Territories comparison
+### ACTIVE DAILY LISTINGS ######################################################
+
+## Figure 1
+
+active_graph <- 
+  daily %>% 
+  filter(Housing == TRUE) %>% 
+  group_by(Date) %>% 
+  summarize(Listings = n()) %>% 
+  ggplot() +
+  geom_line(aes(Date, Listings), colour = "#A85A42", size = 1.5) +
+  theme_minimal() +
+  scale_y_continuous(name = NULL, label = scales::comma) +
+  scale_x_date(name = NULL) +
+  theme(text = element_text(family = "Futura"))
+
+ggsave("output/figure_1.pdf", plot = active_graph, width = 8, 
+       height = 5, units = "in", useDingbats = FALSE)
+
+
+## Table 1
+
+territories_table <- 
+  territories_property %>% 
+  st_drop_geometry() %>% 
+  group_by(name) %>% 
+  summarize(`Active listings` = length(
+    Property_ID[Created <= "2019-04-30" & Scraped >= "2019-04-30" & Housing == TRUE]),
+            `Listings per 1000 residents` = 1000 * `Active listings` / mean(Population),
+            `Annual revenue` = sum(Revenue, na.rm = TRUE),
+            `Revenue per listing` = `Annual revenue` / `Active listings`) %>% 
+  arrange(desc(`Active listings`)) %>% 
+  slice(1:5) %>% 
+  mutate(City = c("Yellowknife", "Whitehorse", "Iqaluit", 
+                  "Macpherson-Grizzly Valley", "Dawson")) %>% 
+  select(City, everything(), -name)
+
+
+## Figure 2
 
 territories_graph <- 
   territories_property %>% 
@@ -19,32 +57,25 @@ territories_graph <-
          key = "City", value = "Listings") %>% 
   filter(Date >= "2016-09-01") %>% 
   ggplot() +
-  geom_line(aes(Date, Listings, colour = City), size = 1) +
+  geom_line(aes(Date, Listings, colour = City), size = 1.5) +
   theme_minimal() +
   scale_y_continuous(name = NULL, label = scales::comma) +
-  scale_x_date(name = NULL)
+  scale_x_date(name = NULL) +
+  scale_colour_brewer(palette = "Set3") +
+  theme(text = element_text(family = "Futura"),
+        legend.title = element_text(family = "Futura", face = "bold", 
+                                    size = 10),
+        legend.text = element_text(family = "Futura", size = 10),
+        legend.position = "bottom")
 
-territories_table <- 
-  territories_property %>% 
-  st_drop_geometry() %>% 
-  group_by(name) %>% 
-  summarize(`Active listings` = length(Property_ID[Created <= "2019-04-30" & Scraped >= "2019-04-30" & Housing == TRUE]),
-            `Listings per 1000 residents` = 1000 * `Active listings` / mean(Population),
-            `Annual revenue` = sum(Revenue, na.rm = TRUE),
-            `Revenue per listing` = `Annual revenue` / `Active listings`) %>% 
-  arrange(desc(`Active listings`)) %>% 
-  slice(1:5) %>% 
-  mutate(City = c("Yellowknife", "Whitehorse", "Iqaluit", 
-                  "Macpherson-Grizzly Valley", "Dawson")) %>% 
-  select(City, everything(), -name)
-
-
-summarize(Listings = n())
-filter(Created <= "2019-04-30", Scraped >= "2019-04-30", Housing == TRUE)
+ggsave("output/figure_2.pdf", plot = territories_graph, width = 8, 
+       height = 5, units = "in", useDingbats = FALSE)
 
 
 
-## Map
+### SPATIAL DISTRIBUTION OF LISTINGS ###########################################
+
+## Figure 3
 
 property_2016 <- 
   property %>% 
@@ -85,23 +116,24 @@ property_2018 <-
   mutate(Year = "2018") %>% 
   filter(Revenue > 0)
 
-LTM_property %>% 
+map <- 
+  LTM_property %>% 
   filter(Revenue > 0) %>%
   mutate(Year = "2019") %>% 
   rbind(property_2016, property_2017, property_2018) %>%
   ggplot() +
   geom_sf(data = WH_streets, colour = alpha("grey", 0.5)) +
-  geom_sf(aes(size = Revenue, colour = Listing_Type), alpha = 0.5) +
-  annotation_scale(location = "br", width_hint = 0.4, line_col = "grey50",
-                   bar_cols = c("grey50", "white"), unit_category = "metric",
-                   style = "ticks") +
+  geom_sf(aes(size = Revenue, colour = Listing_Type), alpha = 0.5, 
+          show.legend = "point") +
   facet_wrap(vars(Year)) +
   scale_colour_manual(name = "Listing type",
                       values = c("#7570B3", "#D95F02")) +
-  scale_size_continuous(guide = FALSE) +
-  guides(colour = guide_legend(
-    override.aes = list(fill = c("#7570B3", "#D95F02"),
-                        alpha = 1))) +
+  scale_size_continuous(breaks = c(5000, 25000, 45000, 65000, 85000),
+                        labels = c("$5,000", "$25,000", "$45,000", "$65,000",
+                                   "$85,000")) +
+  guides(
+    colour = guide_legend(override.aes = list(fill = c("#7570B3", "#D95F02"),
+                                              alpha = 1))) +
   theme(legend.position = c(0, 0),
         legend.justification = c(0, 0),
         legend.spacing = unit(0, "pt"),
@@ -109,33 +141,81 @@ LTM_property %>%
         axis.text.x = element_blank(),
         axis.text.y = element_blank(),
         rect = element_blank(),
-        legend.title = element_text(size = 10)) 
+        #text = element_text(family = "Futura", face = "plain"),
+        legend.title = element_text(family = "Futura", face = "bold", 
+                                    size = 10),
+        legend.text = element_text(family = "Futura", size = 10),
+        strip.text = element_text(family = "Futura", face = "bold", size = 12)) 
 
+ggsave("output/figure_3.pdf", plot = map, width = 8, height = 11, units = "in",
+       useDingbats = FALSE)
 
+  
+  
+### LISTING TYPE PREVALENCE ####################################################
 
-### Bedroom breakdown ##########################################################
+## Table 2
+
+listing_type_table <- 
+  property %>% 
+  filter(Housing == TRUE) %>% 
+  rename(`Listing type` = Listing_Type) %>% 
+  st_drop_geometry() %>% 
+  filter(Created <= "2019-04-30", Scraped >= "2019-04-30") %>% 
+  group_by(`Listing type`) %>% 
+  summarize(`Active listings` = n(),
+            `Annual rev.` = sum(Revenue, na.rm = TRUE),
+            `Rev. per listing` = `Annual rev.` / n()) %>% 
+  mutate(
+    `% of all listings` = scales::percent(`Active listings` /
+                                            sum(`Active listings`)),
+    `% of annual rev.` = `Annual rev.` / sum(`Annual rev.`)) %>% 
+  mutate(
+    `Annual rev.` = round(`Annual rev.`),
+    `Annual rev.` = paste0("$", str_sub(`Annual rev.`, 1, -7), ".",
+                           str_sub(`Annual rev.`, -6, -6), " million"),
+    `% of annual rev.` = round(`% of annual rev.`, 3),
+    `% of annual rev.` = paste0(100 * `% of annual rev.`, "%"),
+    `Rev. per listing` = round(`Rev. per listing`),
+    `Rev. per listing` = paste0("$", str_sub(`Rev. per listing`, 1, -4),
+                                ",", str_sub(`Rev. per listing`, -3, -1))
+  ) %>% 
+  select(`Listing type`, `Active listings`, `Annual rev.`,
+         `% of all listings`, `% of annual rev.`, `Rev. per listing`)
+
+  
+
+### BEDROOM BREAKDOWN ##########################################################
+
+## Figure 4
 
 var <- filter(LTM_property, Listing_Type == "Entire home/apt")$Bedrooms
 nrows <- 20
 df <- expand.grid(y = 1:nrows, x = 1:nrows)
 categ_table <- round(table(var) * ((nrows*nrows)/(length(var))))
 categ_table[1:4] <- categ_table[1:4] + 1
-names(categ_table) <- c("0 (studio)", "1", "2", "3", "4", "5")
+names(categ_table) <- c("Studio", "1", "2", "3", "4", "5")
 df$category <- factor(rep(names(categ_table), categ_table))  
-
-ggplot(df, aes(x = x, y = y, fill = category)) + 
+  
+bedroom_graph <- 
+  ggplot(df, aes(x = x, y = y, fill = category)) + 
   geom_tile(color = "white", size = 0.5) +
   scale_x_continuous(expand = c(0, 0)) +
   scale_y_continuous(expand = c(0, 0), trans = 'reverse') +
-  scale_fill_brewer(palette = "Set3") +
-  labs(title="Bedroom sizes among Toronto entire-home STRs") + 
+  scale_fill_brewer(name = "Bedrooms", palette = "Set3") +
   theme(plot.title = element_text(size = rel(1.2)),
         panel.border = element_rect(size = 1, fill = NA),
         axis.text = element_blank(),
         axis.title = element_blank(),
         axis.ticks = element_blank(),
-        legend.title = element_blank(),
-        legend.position = "right")
+        legend.position = "bottom",
+        legend.title = element_text(family = "Futura", face = "bold",
+                                    size = 10),
+        legend.text = element_text(family = "Futura", size = 10)
+        )
+
+ggsave("output/figure_4.pdf", plot = bedroom_graph, width = 8, 
+       height = 5, units = "in", useDingbats = FALSE)
 
 bedrooms <- 
   LTM_property %>% 
@@ -146,9 +226,12 @@ bedrooms <-
   mutate(Percentage = Count / sum(Count))
 
 
-### Revenue percentiles
+### REVENUE DISTRIBUTION #######################################################
 
-daily %>%
+## Figure 5
+
+revenue_graph <- 
+  daily %>%
   filter(Housing == TRUE, Date >= "2018-05-01", Status == "R") %>%
   group_by(Host_ID) %>%
   summarize(rev = sum(Price)) %>%
@@ -156,29 +239,81 @@ daily %>%
   summarize(
     `Top 1%`  = sum(rev[rev > quantile(rev, c(0.99))] / sum(rev)),
     `Top 5%`  = sum(rev[rev > quantile(rev, c(0.95))] / sum(rev)),
-    `Top 10%` = sum(rev[rev > quantile(rev, c(0.90))] / sum(rev))) %>% 
-  gather(`Top 1%`, `Top 5%`, `Top 10%`, key = "percentile", value = "value") %>% 
-  mutate(percentile = factor(percentile, 
-                             levels = c('Top 1%', 'Top 5%', 'Top 10%'))) %>% 
+    `Top 10%` = sum(rev[rev > quantile(rev, c(0.90))] / sum(rev)),
+    `Top 20%` = sum(rev[rev > quantile(rev, c(0.80))] / sum(rev))) %>% 
+  gather(`Top 1%`, `Top 5%`, `Top 10%`, `Top 20%`, key = "percentile", 
+         value = "value") %>% 
+  mutate(percentile = factor(percentile, levels = c('Top 1%', 'Top 5%', 
+                                                    'Top 10%', 'Top 20%'))) %>% 
   ggplot() +
   geom_bar(aes(percentile, value, fill = percentile), stat = "identity") +
   theme_minimal() +
-  scale_y_continuous(labels = percent) +
-  scale_fill_manual("Percentile", 
-                    values = alpha(c("lightblue", "blue", "darkblue"), 0.6)) +
-  theme(axis.title.y = element_blank()) +
-  theme(axis.title.x = element_blank())
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual("Host revenue percentile", 
+                    values = alpha(c("#FCD7AD", "#F6C28B", "#F79D65", 
+                                     "#A85A42"), 1)) +
+  theme(axis.title.y = element_blank(),
+        axis.title.x = element_blank(),
+        text = element_text(family = "Futura", face = "plain"),
+        legend.title = element_text(family = "Futura", face = "bold", 
+                                    size = 10),
+        legend.text = element_text(family = "Futura", size = 10),
+        legend.position = "none")
 
+ggsave("output/figure_5.pdf", plot = revenue_graph, width = 8, height = 4, 
+       units = "in", useDingbats = FALSE)
+
+
+## Table 3
+
+table_3 <- 
+  property %>% 
+  filter(Revenue > 0, Housing == TRUE) %>% 
+  pull(Revenue) %>% 
+  quantile() %>% 
+  as.list() %>% 
+  as_tibble() %>% 
+  select(-`0%`) %>% 
+  set_names(c("25th percentile", "Median", "75th percentile", 
+              "100th percentile")) %>% 
+  mutate_all(round, -2) %>% 
+  mutate_all(~paste0("$", str_sub(., 1, -4), ",", str_sub(., -3, -3), "00"))
+
+
+## Figure 6
+
+ML_graph <- 
+  daily %>% 
+  group_by(Date) %>% 
+  summarize(Listings = mean(ML),
+            Revenue = sum(Price * (Status == "R") * ML, na.rm = TRUE) / 
+              sum(Price * (Status == "R"), na.rm = TRUE)) %>% 
+  gather(Listings, Revenue, key = `Multilisting percentage`, value = Value) %>% 
+  ggplot() +
+  geom_line(aes(Date, Value, colour = `Multilisting percentage`), alpha = 0.2) +
+  geom_smooth(aes(Date, Value, colour = `Multilisting percentage`), se = FALSE,
+              method = "loess", span = 0.2) +
+  theme_minimal() +
+  scale_y_continuous(name = NULL, label = scales::percent, limits = c(0, 0.5)) +
+  scale_x_date(name = NULL, limits = c(as.Date("2016-05-01"), NA)) +
+  scale_colour_manual(values = c("#A85A42", "#F6C28B")) +
+  theme(legend.position = "bottom",
+        text = element_text(family = "Futura", face = "plain"),
+        legend.title = element_text(family = "Futura", face = "bold", 
+                                    size = 10),
+        legend.text = element_text(family = "Futura", size = 10))
+
+ggsave("output/figure_6.pdf", plot = ML_graph, width = 8, height = 7, 
+       units = "in", useDingbats = FALSE)
+
+
+## Other ML calculations
 
 ML_daily %>% 
   filter(Housing == TRUE, Date >= "2018-05-01", Status == "R") %>% 
   group_by(Host_ID) %>% 
   summarize(Revenue = sum(Price) * exchange_rate) %>% 
   arrange(desc(Revenue))
-
-
-
-### ML analysis
 
 ML_2019 <- 
   daily %>%
@@ -201,17 +336,9 @@ ML_property %>%
          !(Property_ID %in% ML_2019$Property_ID))
 
 
-## Housing loss
+### HOUSING LOSS ###############################################################
 
-# Summer full-time
-
-daily %>% 
-  filter(Listing_Type == "Entire home/apt", Date >= "2018-04-01",
-         Date <= "2018-09-30", Housing == TRUE, Status == "R") %>% 
-  group_by(Property_ID) %>% 
-  tally() %>% 
-  filter(n >= 90, !(Property_ID %in% filter(FREH, Date == "2019-04-30")$Property_ID))
-
+## Figure 7
 
 housing_loss <- 
   tibble(Date = as.Date(as.Date(
@@ -237,27 +364,46 @@ housing_loss <-
   gather(`Entire home/apt`, `Private room`, key = `Listing type`,
          value = `Housing units`)
 
-ggplot(housing_loss) +
+housing_graph <- 
+  ggplot(housing_loss) +
   geom_col(aes(Date, `Housing units`, fill = `Listing type`),
            lwd = 0) +
   theme_minimal() +
   scale_y_continuous(name = NULL, label = scales::comma) +
   scale_x_date(name = NULL, limits = c(as.Date("2015-09-30"), NA)) +
-  theme(legend.position = "bottom")
+  scale_fill_manual(values = c("#A85A42", "#F6C28B")) +
+  theme(legend.position = "bottom",
+        text = element_text(family = "Futura", face = "plain"),
+        legend.title = element_text(family = "Futura", face = "bold", 
+                                    size = 10),
+        legend.text = element_text(family = "Futura", size = 10))
+
+ggsave("output/figure_7.pdf", plot = housing_graph, width = 8, height = 7, 
+       units = "in", useDingbats = FALSE)
 
 
 
-### Capture seasonally intensive bookings?
+## Other housing calculations
 
 daily %>% 
-  filter(Listing_Type == "Entire home/apt", Date <= "2018-09-30", Date >= "2018-04-01", Status == "R") %>% 
+  filter(Listing_Type == "Entire home/apt", Date >= "2018-04-01",
+         Date <= "2018-09-30", Housing == TRUE, Status == "R") %>% 
+  group_by(Property_ID) %>% 
+  tally() %>% 
+  filter(n >= 90, !(Property_ID %in% filter(FREH, 
+                                            Date == "2019-04-30")$Property_ID))
+
+
+daily %>% 
+  filter(Listing_Type == "Entire home/apt", Date <= "2018-09-30",
+         Date >= "2018-04-01", Status == "R") %>% 
   group_by(Property_ID) %>% 
   summarize(n_reserved = n()) %>% 
   summarize(FREH = n())
 
 
 
-### Listings likely in violation of principal residence requirement ############
+### LISTINGS LIKELY NOT IN PRINCIPAL RESIDENCES ################################
 
 ## LFRML calculations
 
@@ -344,6 +490,7 @@ mean(legal$GH, na.rm = TRUE)
 mean(legal$LFRML, na.rm = TRUE)
 mean(legal$ML, na.rm = TRUE)
 mean(legal$Legal, na.rm = TRUE)
+
 
 ## Alternate approach
 

@@ -440,12 +440,12 @@ ggplot(housing_loss) +
   theme(legend.position = "bottom")
 ```
 
-One way to contextualize the magnitude of STR-caused housing loss in Whitehorse is to compare the number of housing units converted to STRs with the number of vacant rental units available for rent. Whitehorse currently has an uncomfortably low rental vacancy rate of 2.8% (CMHC 2018). Given the total purpose-built rental housing stock of 1,026, this means that, at any given moment, there are approximately 30 apartments available for rent. There are nearly one and a half times this many housing units which have been converted to dedicated STRs in the city. In other words, if these units were all returned to the long-term housing market, the effect would be to more than double the rental vacancy rate in the short term. These newly available units would of course be absorbed by new tenants, and the vacancy rate would decline again. But it would settle at a new equilibrium higher than the previous one, and residential rents would likewise be lower than they would have been if the STR units continued to act as hotels rather than housing.
+One way to contextualize the magnitude of STR-caused housing loss in Whitehorse is to compare the number of housing units converted to STRs with the number of vacant rental units available for rent. Whitehorse currently has an uncomfortably low rental vacancy rate of 3.2% (Yukon Bureau of Statistics 2019). Given the total rental housing stock of 2,186, this means that, at any given moment, there are approximately 70 apartments available for rent. There are nearly two thirds this many housing units which have been converted to dedicated STRs in the city. In other words, if these units were all returned to the long-term housing market, the effect would be to nearly double the rental vacancy rate in the short term. These newly available units would of course be absorbed by new tenants, and the vacancy rate would decline again. But it would settle at a new equilibrium higher than the previous one, and residential rents would likewise be lower than they would have been if the STR units continued to act as hotels rather than housing.
 
 Another way to contextualize STR-caused housing loss in Whitehorse is to observe that, in the last year, 328 new occupancy permits were issued in the city. Meanwhile, during that same time period there were approximately `r nrow(filter(FREH, Date == "2019-04-30")) + sum(filter(GH, date == "2019-04-30")$housing_units)` housing units operating as dedicated STRs. Returning these units to the market would be equivalent to nearly two months' worth of new housing supply in the city.
 
 
-### Listings likely in violation of principal residence requirement
+### Listings likely not being operated out of a principal residence
 
 ```{r principal_res, include = FALSE, cache = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
 
@@ -542,10 +542,10 @@ To be clear, there is a relatively high level of uncertainty in this estimate, s
 
 ### References
 
-CMHC. 2018. Northern housing report. Available online at http://publications.gc.ca/collections/collection_2018/schl-cmhc/NH12-263-2018-eng.pdf.
-
 Combs, Jennifer, Danielle Kerrigan, and David Wachsmuth. 2019. Short-term rentals in Canada: Uneven growth, uneven impacts. Forthcoming in *Canadian Journal of Urban Research*. Available online at https://upgo.lab.mcgill.ca/publication/short-term-rentals-in-canada/.
 
 Rudyk, Mike. 2019. Whitehorse developing local Airbnb regulations. *CBC News*, May 2. Available online at https://www.cbc.ca/news/canada/north/airbnb-whitehorse-short-term-rentals-city-of-whitehorse-1.5120242.
 
 Wood, Stephanie. 2018. With Airbnb rentals flourishing in Whitehorse, city considers regulation. *CBC News*, July 26. Available online at https://www.cbc.ca/news/canada/north/yukon-tops-airbnb-ratings-canada-1.4761171.
+
+Yukon Bureau of Statistics. 2019. Yukon rent survey. Available online at https://www.eco.gov.yk.ca/stats/pdf/rent_apr19.pdf.

@@ -5,6 +5,7 @@
 library(tidyverse)
 library(sf)
 library(ggspatial)
+library(extrafont)
 
 
 ## Import data
